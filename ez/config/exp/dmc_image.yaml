@@ -156,7 +156,7 @@ actors:
   data_worker: 2
   batch_worker: 8
 
-# wandb
-wandb:
+# mlflow
+mlflow:
   project: 'ez-v2-release'
   tag: 'DMC-image'

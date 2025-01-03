@@ -8,12 +8,9 @@ import torch
 import numpy as np
 import ray
 
-from ez.utils.format import str_to_arr
-
 
 class GameTrajectory:
     def __init__(self, **kwargs):
-        # self.raw_obs_lst = []
         self.obs_lst = []
         self.reward_lst = []
         self.policy_lst = []
@@ -27,27 +24,21 @@ class GameTrajectory:
 
         self.n_stack = kwargs.get('n_stack')
         self.discount = kwargs.get('discount')
-        self.obs_to_string = kwargs.get('obs_to_string')
-        self.gray_scale = kwargs.get('gray_scale')
         self.unroll_steps = kwargs.get('unroll_steps')
         self.td_steps = kwargs.get('td_steps')
         self.td_lambda = kwargs.get('td_lambda')
         self.obs_shape = kwargs.get('obs_shape')
         self.max_size = kwargs.get('trajectory_size')
-        self.image_based = kwargs.get('image_based')
         self.episodic = kwargs.get('episodic')
         self.GAE_max_steps = kwargs.get('GAE_max_steps')
 
     def init(self, init_frames):
         assert len(init_frames) == self.n_stack
-
         for obs in init_frames:
             self.obs_lst.append(copy.deepcopy(obs))
 
     def append(self, action, obs, reward):
         assert self.__len__() <= self.max_size
-
-        # append a transition tuple
         self.action_lst.append(action)
         self.obs_lst.append(obs)
         self.reward_lst.append(reward)
@@ -57,25 +48,10 @@ class GameTrajectory:
         , which is necessary for the bootstrapped values at the end states of this history block.
         Eg: len = 100; target value v_100 = r_100 + gamma^1 r_101 + ... + gamma^4 r_104 + gamma^5 v_105,
             but r_101, r_102, ... are from the next history block.
-        Parameters
-        ----------
-        tail_obs: list
-            tail o_t from the next trajectory block
-        tail_rewards: list
-            tail r_t from the next trajectory block
-        tail_pred_values: list
-            tail r_t from the next trajectory block (predicted by network)
-        tail_search_values: list
-            tail v_t from the next trajectory block (search by mcts)
-        tail_policies: list
-            tail pi_t from the next trajectory block
         """
         assert len(tail_obs) <= self.unroll_steps
         assert len(tail_policies) <= self.unroll_steps
-        # assert len(tail_search_values) <= self.unroll_steps + self.td_steps
-        # assert len(tail_rewards) <= self.unroll_steps + self.td_steps - 1
 
-        # notice: next block observation should start from (stacked_observation - 1) in next trajectory
         for obs in tail_obs:
             self.obs_lst.append(copy.deepcopy(obs))
 
@@ -93,15 +69,10 @@ class GameTrajectory:
 
         # calculate bootstrapped value
         self.bootstrapped_value_lst = self.get_bootstrapped_value(value_type='prediction')
-        # calculate GAE value
 
     def save_to_memory(self):
-        """
-        post processing the data when a history block is full
-        """
-        # convert to numpy
+        """Post processing the data when a history block is full"""
         self.obs_lst = ray.put(np.array(self.obs_lst))
-        # self.obs_lst = np.array(self.obs_lst)
         self.reward_lst = np.array(self.reward_lst)
         self.policy_lst = np.array(self.policy_lst)
         self.action_lst = np.array(self.action_lst)
@@ -123,7 +94,6 @@ class GameTrajectory:
         return np.array(target_obs), np.array(target_reward), np.array(target_pred_value), np.array(target_search_value), np.array(target_bt_value), np.array(target_policy)
 
     def store_search_results(self, pred_value, search_value, policy, idx: int = None):
-        # store the visit count distributions and value of the root node after MCTS
         if idx is None:
             self.pred_value_lst.append(pred_value)
             self.search_value_lst.append(search_value)
@@ -150,8 +120,7 @@ class GameTrajectory:
         if index is None:
             td_lambda = self.td_lambda
         else:
-            delta_lambda = 0.1 * (
-                    collected_transitions - index) / 3e4
+            delta_lambda = 0.1 * (collected_transitions - index) / 3e4
             td_lambda = self.td_lambda - delta_lambda
             td_lambda = np.clip(td_lambda, 0.65, self.td_lambda)
 
@@ -222,56 +191,32 @@ class GameTrajectory:
             bt_values.append(bt_value)
         return bt_values
 
-    def get_zero_obs(self, n_stack, channel_first=True):
-
-        if self.image_based:
-            if channel_first:
-                return [np.ones(self.obs_shape, dtype=np.uint8) for _ in
-                        range(n_stack)]
-            else:
-                return [np.ones((self.obs_shape[1], self.obs_shape[2], self.obs_shape[0]), dtype=np.uint8)
-                        for _ in range(n_stack)]
-        else:
-            return [np.ones(self.obs_shape, dtype=np.float32) for _ in range(n_stack)]
+    def get_zero_obs(self, n_stack):
+        """Return zero-filled observation"""
+        return [np.ones(self.obs_shape, dtype=np.float32) for _ in range(n_stack)]
 
     def get_current_stacked_obs(self):
-        # return the current stacked observation of correct format for model inference
+        """Return the current stacked observation for model inference"""
         index = len(self.reward_lst)
         frames = ray.get(self.obs_lst)[index:index + self.n_stack]
-        # frames = self.obs_lst[index:index + self.n_stack]
-        if self.obs_to_string:
-            frames = [str_to_arr(obs, self.gray_scale) for obs in frames]
         return frames
 
     def get_index_stacked_obs(self, index, padding=False, extra=0):
-        """To obtain an observation of correct format: o[t, t + stack frames + extra len]
-        Parameters
-        ----------
-        i: int
-            time step i
-        padding: bool
-            True -> padding frames if (t + stack frames) are out of trajectory
-        """
+        """Get stacked observations starting from index"""
         unroll_steps = self.unroll_steps + extra
         frames = ray.get(self.obs_lst)[index:index + self.n_stack + unroll_steps]
-        # frames = self.obs_lst[index:index + self.n_stack + unroll_steps]
         if padding:
             pad_len = self.n_stack + unroll_steps - len(frames)
             if pad_len > 0:
                 pad_frames = [frames[-1] for _ in range(pad_len)]
                 frames = np.concatenate((frames, pad_frames))
-        if self.obs_to_string:
-            frames = [str_to_arr(obs, self.gray_scale) for obs in frames]
         return frames
 
     def set_inf_len(self):
         self.max_size = 100000000
 
     def is_full(self):
-        # history block is full
         return self.__len__() >= self.max_size
 
     def __len__(self):
-        # if self.length is not None:
-        #     return self.length
         return len(self.action_lst)

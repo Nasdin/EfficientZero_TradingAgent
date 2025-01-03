@@ -9,15 +9,13 @@ env:
   n_skip: 2
   n_stack: 1
   max_episode_steps: 1000
-  gray_scale: False
-  image_based: False
   clip_reward: False
   obs_shape: [10]
 
 # model architecture
 model:
 
-# wandb
-wandb:
+# mlflow
+mlflow:
   project: 'ez-v2'
   tag: 'State'

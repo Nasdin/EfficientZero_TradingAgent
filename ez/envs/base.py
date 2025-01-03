@@ -1,43 +1,33 @@
-import gym
+import gymnasium as gym
 import numpy as np
-
-from ez.utils.format import arr_to_str
 
 
 class BaseWrapper(gym.Wrapper):
-    def __init__(self, env, obs_to_string, clip_reward):
-        """Cosine Consistency loss function: similarity loss
+    def __init__(self, env, clip_reward):
+        """Base environment wrapper for reward clipping and done flag handling
         Parameters
         ----------
-        obs_to_string: bool. Convert the observation to jpeg string if True, in order to save memory usage.
+        clip_reward: bool. Whether to clip rewards to [-1, 1]
         """
         super().__init__(env)
-        self.obs_to_string = obs_to_string
         self.clip_reward = clip_reward
 
-    def format_obs(self, obs):
-        if self.obs_to_string:
-            # convert obs to jpeg string for lower memory usage
-            obs = obs.astype(np.uint8)
-            obs = arr_to_str(obs)
-        return obs
-
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
-        # format observation
-        obs = self.format_obs(obs)
-
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        
         info['raw_reward'] = reward
         if self.clip_reward:
             reward = np.sign(reward)
 
+        # Combine terminated and truncated into a single done flag for backward compatibility
+        done = terminated or truncated
+        info['terminated'] = terminated
+        info['truncated'] = truncated
+
         return obs, reward, done, info
 
     def reset(self, **kwargs):
-        obs = self.env.reset(**kwargs)
-        # format observation
-        obs = self.format_obs(obs)
-
+        obs, info = self.env.reset(**kwargs)
         return obs
 
     def close(self):

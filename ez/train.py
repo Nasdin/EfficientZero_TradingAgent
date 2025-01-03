@@ -7,8 +7,7 @@ import os
 import time
 os.environ["RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE"] = "1"
 import ray
-import wandb
-import hydra
+import mlflow
 import torch
 import multiprocessing
 
@@ -59,15 +58,15 @@ def start_ddp_trainer(rank, config):
     # set log
 
     if rank == 0:
-        # wandb logger
+        # MLFlow logger
         if config.ddp.training_size == 1:
-            wandb_name = config.env.game + '-' + config.wandb.tag
-            print(f'wandb_name={wandb_name}')
-            logger = wandb.init(
-                name=wandb_name,
-                project=config.wandb.project,
-                # config=config,
-            )
+            experiment_name = config.env.game + '-' + config.mlflow.tag  # Keep using mlflow config for compatibility
+            print(f'experiment_name={experiment_name}')
+            mlflow.set_experiment(config.mlflow.project)  # Use mlflow project name as MLFlow experiment
+            logger = mlflow.start_run(run_name=experiment_name)
+            # Log config parameters
+            flat_config = OmegaConf.to_container(config, resolve=True)
+            mlflow.log_params(flat_config)
         else:
             logger = None
         # file logger

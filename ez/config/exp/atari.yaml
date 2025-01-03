@@ -150,7 +150,7 @@ actors:
   data_worker: 1
   batch_worker: 8  # oriMCTS 16
 
-# wandb
-wandb:
+# mlflow
+mlflow:
   project: 'ez-v2-release'
   tag: 'Atari'

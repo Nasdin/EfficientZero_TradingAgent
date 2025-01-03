@@ -21,7 +21,7 @@ data:
 mcts:
 model:
 actors:
-wandb:
+mlflow:
   project: 'ez-v2'
   tag: ''
 
